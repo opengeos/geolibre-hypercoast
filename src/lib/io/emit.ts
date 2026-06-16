@@ -15,8 +15,7 @@
  * (Apache-2.0) via HyperCoast's `emit_xarray`.
  */
 
-import type { Dataset } from "h5wasm";
-import { openH5, closeH5, type OpenedH5 } from "./h5";
+import { closeH5, h5NumberArray as toNumberArray, type Dataset, type OpenedH5 } from "./h5";
 import type { SceneMetadata, SceneReader } from "./SceneReader";
 import {
   applyGlt,
@@ -27,28 +26,29 @@ import {
   type GeoTransform,
 } from "../render/orthorectify";
 
-/** Read a numeric HDF5 dataset/attribute value as a plain number array. */
-function toNumberArray(value: unknown): number[] {
-  if (value instanceof Float32Array || value instanceof Float64Array) {
-    return Array.from(value);
-  }
-  if (Array.isArray(value)) return value as number[];
-  throw new Error("Expected a numeric array value.");
+/**
+ * Detect whether an open HDF5 file is an EMIT L2A reflectance scene.
+ *
+ * @param f - An open h5wasm file.
+ * @returns True if the EMIT-defining datasets/attributes are present.
+ */
+export function isEmitScene(f: OpenedH5["file"]): boolean {
+  return Boolean(f.attrs["geotransform"]) && f.get("location/glt_x") != null;
 }
 
 /**
  * Open an EMIT L2A reflectance scene and return a reader over it.
  *
- * @param bytes - The complete `.nc` file contents.
+ * @param opened - An already-opened EMIT `.nc` (HDF5) handle; the reader takes
+ *   ownership and closes it via {@link SceneReader.close} or on failure.
  * @param name - A human-readable scene name (typically the file name).
  * @returns A {@link SceneReader} backed by the opened file.
  * @throws If the file is missing the datasets/attributes an EMIT L2A scene must have.
  */
 export async function openEmitScene(
-  bytes: ArrayBuffer,
+  opened: OpenedH5,
   name: string,
 ): Promise<SceneReader> {
-  const opened: OpenedH5 = await openH5(bytes);
   const f = opened.file;
 
   try {

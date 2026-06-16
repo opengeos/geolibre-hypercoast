@@ -3,6 +3,6 @@
   "name": "HyperCoast",
   "version": "0.1.0",
   "entry": "dist/index.js",
-  "description": "Visualize and analyze hyperspectral data (EMIT, PACE, and more) directly in GeoLibre.",
+  "description": "Visualize and analyze hyperspectral data (EMIT, PACE, NEON, PRISMA, Tanager, AVIRIS, DESIS, EnMAP, Wyvern) directly in GeoLibre.",
   "style": "dist/style.css"
 }

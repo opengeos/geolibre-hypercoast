@@ -119,6 +119,111 @@ export function applyGlt(
 }
 
 /**
+ * A resampling plan that maps a regular EPSG:4326 target grid back to swath
+ * pixels, for sensors that georeference with 2-D per-pixel latitude/longitude
+ * arrays (PACE, Tanager) rather than a GLT or affine.
+ */
+export interface SwathGrid {
+  /** Target grid columns (west→east). */
+  width: number;
+  /** Target grid rows (north→south). */
+  height: number;
+  /** Geographic extent as [west, south, east, north]. */
+  bounds: Bounds;
+  /** GDAL-style affine of the target grid (EPSG:4326). */
+  gt: GeoTransform;
+  /**
+   * For each target cell (row-major), the flat swath index `sy*swathW + sx` of
+   * the pixel that lands there, or -1 if the cell has no contributing pixel.
+   */
+  srcIndex: Int32Array;
+}
+
+/**
+ * Build a forward-scatter resampling plan from per-pixel lon/lat arrays.
+ *
+ * The target grid spans the lon/lat bounding box of the valid swath pixels and
+ * is sized to roughly the swath's pixel count, so most cells receive exactly one
+ * pixel; cells with none stay -1 (rendered transparent). Each swath pixel is
+ * mapped to its containing target cell (last writer wins) — the lat/lon analogue
+ * of {@link applyGlt}.
+ *
+ * @param lon - Per-pixel longitudes, row-major [downtrack, crosstrack], length swathW*swathH.
+ * @param lat - Per-pixel latitudes, same layout.
+ * @param swathW - Crosstrack (column) count.
+ * @param swathH - Downtrack (row) count.
+ * @returns The {@link SwathGrid} resampling plan.
+ * @throws If no swath pixel has a valid geolocation.
+ */
+export function buildSwathGrid(
+  lon: ArrayLike<number>,
+  lat: ArrayLike<number>,
+  swathW: number,
+  swathH: number,
+): SwathGrid {
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  const valid = (lng: number, la: number): boolean =>
+    Number.isFinite(lng) && Number.isFinite(la) && Math.abs(lng) <= 180 && Math.abs(la) <= 90;
+
+  const n = swathW * swathH;
+  for (let i = 0; i < n; i++) {
+    const lng = lon[i];
+    const la = lat[i];
+    if (!valid(lng, la)) continue;
+    if (lng < west) west = lng;
+    if (lng > east) east = lng;
+    if (la < south) south = la;
+    if (la > north) north = la;
+  }
+  if (!Number.isFinite(west)) throw new Error("Swath has no valid geolocation.");
+
+  const width = swathW;
+  const height = swathH;
+  const spanX = east - west || 1e-9;
+  const spanY = north - south || 1e-9;
+  const dx = spanX / width;
+  const dy = spanY / height;
+
+  const srcIndex = new Int32Array(width * height).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const lng = lon[i];
+    const la = lat[i];
+    if (!valid(lng, la)) continue;
+    let col = Math.floor((lng - west) / dx);
+    let row = Math.floor((north - la) / dy);
+    if (col === width) col = width - 1;
+    if (row === height) row = height - 1;
+    if (col < 0 || col >= width || row < 0 || row >= height) continue;
+    srcIndex[row * width + col] = i;
+  }
+
+  const gt: GeoTransform = [west, dx, 0, north, 0, -dy];
+  return { width, height, bounds: [west, south, east, north], gt, srcIndex };
+}
+
+/**
+ * Convert a lng/lat to integer cell indices on a {@link SwathGrid}.
+ *
+ * @param grid - The target grid.
+ * @param lng - Longitude in degrees.
+ * @param lat - Latitude in degrees.
+ * @returns The column/row of the containing cell (may be out of range).
+ */
+export function swathGridColRow(
+  grid: SwathGrid,
+  lng: number,
+  lat: number,
+): { col: number; row: number } {
+  const [west, dx, , north, , dy] = grid.gt;
+  const col = Math.floor((lng - west) / dx);
+  const row = Math.floor((lat - north) / dy); // dy < 0
+  return { col, row };
+}
+
+/**
  * Compose three orthorectified bands into an RGBA buffer with a per-channel
  * linear stretch. Cells that are NaN in the red band are treated as nodata and
  * rendered fully transparent (the GLT drops whole pixels, so all bands share the

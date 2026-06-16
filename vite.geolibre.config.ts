@@ -64,6 +64,11 @@ export default defineConfig({
       external: [],
       output: {
         assetFileNames: () => "style.css",
+        // Keep the GeoLibre bundle a single self-contained `index.js`. geotiff.js
+        // lazy-loads its codecs via dynamic `import()`, which would otherwise split
+        // the bundle into sibling chunks; disable code splitting so the loader
+        // needs one file.
+        codeSplitting: false,
       },
     },
     cssCodeSplit: false,
