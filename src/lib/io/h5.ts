@@ -108,14 +108,22 @@ export function h5NumberArray(value: unknown): number[] {
   throw new Error("Expected a numeric array value.");
 }
 
+/** Whether a typed-array view holds BigInt elements (not coercible to `number`). */
+function isBigIntView(v: ArrayBufferView): boolean {
+  return v instanceof BigInt64Array || v instanceof BigUint64Array;
+}
+
 /** Read a scalar numeric attribute from a file or dataset, or null if absent. */
 export function h5AttrNumber(attrs: Record<string, { value: unknown }>, key: string): number | null {
   const a = attrs[key];
   if (!a) return null;
   const v = a.value;
   if (typeof v === "number") return v;
-  if (v instanceof Float32Array || v instanceof Float64Array || v instanceof Int32Array) {
-    return v.length > 0 ? Number(v[0]) : null;
+  // Any numeric typed array (Int8/16/32, Uint8/16/32, Float32/64); BigInt views
+  // are excluded since their elements aren't `number`.
+  if (ArrayBuffer.isView(v) && !(v instanceof DataView) && !isBigIntView(v)) {
+    const arr = v as unknown as ArrayLike<number>;
+    return arr.length > 0 ? Number(arr[0]) : null;
   }
   if (Array.isArray(v) && v.length > 0) return Number(v[0]);
   const n = Number(v);

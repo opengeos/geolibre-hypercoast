@@ -29,6 +29,10 @@ describe('buildSwathGrid', () => {
   it('throws when no pixel has a valid geolocation', () => {
     expect(() => buildSwathGrid([NaN, 999], [NaN, 999], 2, 1)).toThrow(/no valid geolocation/);
   });
+
+  it('throws when the geolocation arrays are too small for the swath', () => {
+    expect(() => buildSwathGrid([0, 1], [0, 1], 2, 2)).toThrow(/too small/);
+  });
 });
 
 describe('swathGridColRow', () => {

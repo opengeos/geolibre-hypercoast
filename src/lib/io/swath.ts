@@ -159,9 +159,14 @@ export async function openPaceScene(opened: OpenedH5, name: string): Promise<Sce
     const lat = toFloat32(latDs.value);
 
     const wlDs = f.get("sensor_band_parameters/wavelength_3d") as Dataset | null;
-    const wavelengths = wlDs
-      ? h5NumberArray(wlDs.value)
-      : Array.from({ length: bandCount }, (_, i) => i + 1);
+    const wlRaw = wlDs ? h5NumberArray(wlDs.value) : null;
+    // Only trust the wavelength vector when it lines up with the cube's bands;
+    // otherwise the RGB sliders would map to the wrong bands, so fall back to
+    // band indices.
+    const wavelengths =
+      wlRaw && wlRaw.length === bandCount
+        ? wlRaw
+        : Array.from({ length: bandCount }, (_, i) => i + 1);
 
     const fill = h5AttrNumber(cube.ds.attrs, "_FillValue") ?? -32767;
     const scale = h5AttrNumber(cube.ds.attrs, "scale_factor") ?? 1;

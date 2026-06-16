@@ -47,39 +47,44 @@ describe('real-granule reader integration', () => {
     it.skipIf(!present)(`reads a ${c.sensor} scene end-to-end`, async () => {
       const bytes = readArrayBuffer(path);
       const scene = await openScene(bytes, c.file);
-      const md = scene.metadata;
+      try {
+        const md = scene.metadata;
 
-      expect(md.sensor).toBe(c.sensor);
-      expect(md.bandCount).toBeGreaterThan(10);
-      expect(md.wavelengths.length).toBe(md.bandCount);
+        expect(md.sensor).toBe(c.sensor);
+        expect(md.bandCount).toBeGreaterThan(10);
+        expect(md.wavelengths.length).toBe(md.bandCount);
 
-      // Wavelengths are ascending and within the expected instrument range.
-      expect(md.wavelengths[0]).toBeGreaterThanOrEqual(c.wlRange[0]);
-      expect(md.wavelengths[md.bandCount - 1]).toBeLessThanOrEqual(c.wlRange[1]);
+        // Wavelengths ascend monotonically and stay within the instrument range.
+        for (let i = 1; i < md.bandCount; i++) {
+          expect(md.wavelengths[i]).toBeGreaterThanOrEqual(md.wavelengths[i - 1]);
+        }
+        expect(md.wavelengths[0]).toBeGreaterThanOrEqual(c.wlRange[0]);
+        expect(md.wavelengths[md.bandCount - 1]).toBeLessThanOrEqual(c.wlRange[1]);
 
-      // Bounds are a sane lng/lat box.
-      const [w, s, e, n] = md.bounds;
-      expect(w).toBeGreaterThanOrEqual(-180);
-      expect(e).toBeLessThanOrEqual(180);
-      expect(w).toBeLessThan(e);
-      expect(s).toBeLessThan(n);
-      expect(s).toBeGreaterThanOrEqual(-90);
-      expect(n).toBeLessThanOrEqual(90);
+        // Bounds are a sane lng/lat box.
+        const [w, s, e, n] = md.bounds;
+        expect(w).toBeGreaterThanOrEqual(-180);
+        expect(e).toBeLessThanOrEqual(180);
+        expect(w).toBeLessThan(e);
+        expect(s).toBeLessThan(n);
+        expect(s).toBeGreaterThanOrEqual(-90);
+        expect(n).toBeLessThanOrEqual(90);
 
-      // A mid band renders with at least some valid (non-NaN) cells.
-      const mid = Math.floor(md.bandCount / 2);
-      const band = await scene.readOrthoBand(mid);
-      expect(band.length).toBe(md.width * md.height);
-      const finite = band.reduce((acc, v) => acc + (Number.isNaN(v) ? 0 : 1), 0);
-      expect(finite).toBeGreaterThan(0);
+        // A mid band renders with at least some valid (non-NaN) cells.
+        const mid = Math.floor(md.bandCount / 2);
+        const band = await scene.readOrthoBand(mid);
+        expect(band.length).toBe(md.width * md.height);
+        const finite = band.reduce((acc, v) => acc + (Number.isNaN(v) ? 0 : 1), 0);
+        expect(finite).toBeGreaterThan(0);
 
-      // A spectrum at the scene center has the right length.
-      const cx = (w + e) / 2;
-      const cy = (s + n) / 2;
-      const spec = await scene.readSpectrumAt(cx, cy);
-      if (spec) expect(spec.length).toBe(md.bandCount);
-
-      scene.close();
+        // A spectrum at the scene center has the right length.
+        const cx = (w + e) / 2;
+        const cy = (s + n) / 2;
+        const spec = await scene.readSpectrumAt(cx, cy);
+        if (spec) expect(spec.length).toBe(md.bandCount);
+      } finally {
+        scene.close();
+      }
     }, 120_000);
   }
 });

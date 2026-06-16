@@ -59,6 +59,9 @@ export function makeProjectedGridReader(
 ): SceneReader {
   const bounds = projectedGridToLngLatBounds(src.gt, src.width, src.height, src.epsg);
   const [x0, dx, , y0, , dy] = src.gt;
+  if (!Number.isFinite(dx) || dx === 0 || !Number.isFinite(dy) || dy === 0) {
+    throw new Error(`Invalid affine pixel size (dx=${dx}, dy=${dy}); cannot map coordinates.`);
+  }
 
   const metadata: SceneMetadata = {
     sensor: src.sensor,

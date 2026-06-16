@@ -161,6 +161,16 @@ export function buildSwathGrid(
   swathW: number,
   swathH: number,
 ): SwathGrid {
+  const n = swathW * swathH;
+  // A truncated lon/lat array would index `undefined` and silently mis-map
+  // pixels, so require both arrays to cover the full swath up front.
+  if (lon.length < n || lat.length < n) {
+    throw new Error(
+      `Geolocation arrays too small for ${swathW}x${swathH} swath ` +
+        `(lon ${lon.length}, lat ${lat.length}, need ${n}).`,
+    );
+  }
+
   let west = Infinity;
   let south = Infinity;
   let east = -Infinity;
@@ -168,7 +178,6 @@ export function buildSwathGrid(
   const valid = (lng: number, la: number): boolean =>
     Number.isFinite(lng) && Number.isFinite(la) && Math.abs(lng) <= 180 && Math.abs(la) <= 90;
 
-  const n = swathW * swathH;
   for (let i = 0; i < n; i++) {
     const lng = lon[i];
     const la = lat[i];

@@ -789,8 +789,10 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     const sensorLabel = document.createElement('label');
     sensorLabel.className = 'plugin-control-label';
     sensorLabel.textContent = 'Sensor';
+    sensorLabel.htmlFor = 'hypercoast-sensor-select';
     const sensorSelect = document.createElement('select');
     sensorSelect.className = 'plugin-control-select';
+    sensorSelect.id = 'hypercoast-sensor-select';
     const autoOpt = document.createElement('option');
     autoOpt.value = 'auto';
     autoOpt.textContent = 'Auto-detect';

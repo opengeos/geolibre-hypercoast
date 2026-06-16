@@ -160,8 +160,19 @@ export async function openPrismaScene(opened: OpenedH5, name: string): Promise<S
     const vnir = f.get(PRISMA_VNIR) as Dataset | null;
     const swir = f.get(PRISMA_SWIR) as Dataset | null;
     if (!vnir?.shape || !swir?.shape) throw new Error("Missing PRISMA VNIR/SWIR cubes.");
+    if (vnir.shape.length !== 3 || swir.shape.length !== 3) {
+      throw new Error("PRISMA VNIR/SWIR cubes must be 3-D (y, band, x).");
+    }
     const [height, nVnir, width] = vnir.shape;
     const nSwir = swir.shape[1];
+    // Both detectors must share the spatial grid so a band from either can be
+    // scattered onto the same ortho grid and sampled at the same (col, row).
+    if (swir.shape[0] !== height || swir.shape[2] !== width) {
+      throw new Error(
+        `PRISMA VNIR/SWIR spatial dims differ (VNIR ${height}x${width}, ` +
+          `SWIR ${swir.shape[0]}x${swir.shape[2]}).`,
+      );
+    }
 
     const a = f.attrs;
     const vnirWl = h5NumberArray(a["List_Cw_Vnir"]?.value);
@@ -197,8 +208,10 @@ export async function openPrismaScene(opened: OpenedH5, name: string): Promise<S
     const gt: GeoTransform = [ulE, xRes, 0, ulN, 0, yRes];
 
     const rescale = (raw: number, lo: number, hi: number): number => {
-      const v = lo + (raw / PRISMA_MAX) * (hi - lo);
-      return v === PRISMA_FILL ? NaN : v;
+      // Mask the fill sentinel on the raw sample, before rescaling, so a fill
+      // value cannot map to a valid-looking reflectance.
+      if (raw === PRISMA_FILL) return NaN;
+      return lo + (raw / PRISMA_MAX) * (hi - lo);
     };
 
     const source: ProjectedGridSource = {

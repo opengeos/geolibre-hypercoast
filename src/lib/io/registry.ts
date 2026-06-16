@@ -112,24 +112,28 @@ export async function openScene(
 
   if (container === "hdf5") {
     const opened = await openH5(bytes);
+    // Once an opener is invoked it owns the handle (and closes it on its own
+    // failure). Until then — including if a sniff throws or nothing matches —
+    // this function must close it. `dispatched` tracks that hand-off.
+    let dispatched = false;
     try {
       if (forced) {
         const entry = HDF5_SENSORS.find((s) => s.id === forced);
         if (!entry) throw new Error(`Sensor "${forced}" is not an HDF5 sensor.`);
+        dispatched = true;
         return await entry.open(opened, name);
       }
       for (const entry of HDF5_SENSORS) {
-        if (entry.sniff(opened.file)) return await entry.open(opened, name);
+        if (entry.sniff(opened.file)) {
+          dispatched = true;
+          return await entry.open(opened, name);
+        }
       }
       throw new Error(
         "Unrecognized HDF5/netCDF4 scene (not EMIT, PACE, NEON, PRISMA, Tanager, or AVIRIS).",
       );
     } catch (err) {
-      // Each opener closes on its own failure; only close here if we never dispatched.
-      if (err instanceof Error && err.message.startsWith("Unrecognized")) closeH5(opened);
-      else if (forced && err instanceof Error && err.message.includes("not an HDF5 sensor")) {
-        closeH5(opened);
-      }
+      if (!dispatched) closeH5(opened);
       throw err;
     }
   }
