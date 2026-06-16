@@ -126,10 +126,10 @@
   max-width: 90vw;
   min-height: 160px;
   max-height: 85vh;
-  /* User-resizable in width AND height (works in any docking corner). The
-     bottom-right handle requires a non-visible overflow; the inner content is
-     the scroll container, so the panel itself hides overflow. */
-  resize: both;
+  /* Width resizing is handled by custom grips on both edges (see
+     .plugin-control-resize-handle) so it works in any docking corner — the
+     native CSS `resize` grip only sits bottom-right and is unreachable when the
+     panel is anchored to the right. */
   overflow: hidden;
   z-index: 1000;
   padding: 8px;
@@ -155,6 +155,27 @@
 
 .plugin-control-panel::-webkit-scrollbar-thumb:hover {
   background: var(--pc-scrollbar-thumb-hover);
+}
+
+/* Width-resize grips on both vertical edges, so the panel is resizable whether
+   it is anchored to the left or the right of the map. */
+.plugin-control-resize-handle {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 2;
+  touch-action: none;
+  user-select: none;
+}
+
+.plugin-control-resize-handle.left {
+  left: 0;
+}
+
+.plugin-control-resize-handle.right {
+  right: 0;
 }
 
 .plugin-control-panel.expanded {
