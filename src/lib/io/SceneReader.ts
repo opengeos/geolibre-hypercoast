@@ -31,6 +31,12 @@ export interface SceneMetadata {
   goodWavelengths: boolean[];
   /** Geographic extent of the ortho grid as [west, south, east, north], EPSG:4326. */
   bounds: Bounds;
+  /**
+   * The scene's native CRS as an "EPSG:<code>" string, for display only. The
+   * reader reprojects internally, so {@link bounds} is always EPSG:4326 and the
+   * UI never needs this; it is surfaced purely for the scene-info line.
+   */
+  crs?: string;
 }
 
 /** Reads bands and spectra from a single loaded scene. */

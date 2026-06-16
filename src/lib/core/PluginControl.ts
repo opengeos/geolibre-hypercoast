@@ -13,9 +13,10 @@ import type {
   PluginControlEventHandler,
 } from './types';
 import type { DeepLinkConsumer } from '../utils/deep-link';
+import { generateId } from '../utils/helpers';
 import type { SceneReader } from '../io/SceneReader';
 import { nearestBandIndex } from '../io/SceneReader';
-import { openEmitScene } from '../io/emit';
+import { openScene, SENSORS } from '../io/registry';
 import { composeRgb } from '../render/orthorectify';
 import { RasterOverlay } from '../render/RasterOverlay';
 import { SpectrumChart, type ChartSeries } from '../chart/SpectrumChart';
@@ -126,6 +127,8 @@ export class PluginControl implements IControl, DeepLinkConsumer {
   private _renderToken = 0;
   private _fitted = false;
   private _busy = false;
+  // Manual sensor override for the loader; "auto" content-sniffs the file.
+  private _selectedSensor = 'auto';
 
   // Map click handler for the spectral inspector.
   private _mapClickHandler: ((e: MapMouseEvent) => void) | null = null;
@@ -316,13 +319,13 @@ export class PluginControl implements IControl, DeepLinkConsumer {
   // -------------------------------------------------------------------------
 
   /**
-   * Open a native file dialog and load the chosen EMIT `.nc` scene.
+   * Open a native file dialog and load the chosen hyperspectral scene.
    *
    * Uses an `<input type="file">` rather than the host's directory picker
    * (`pickLocalDirectoryFiles`), so the user selects a single file. This works
    * in both the GeoLibre web build and the Tauri desktop webview.
    */
-  async loadEmitFromFiles(): Promise<void> {
+  async loadSceneFromFiles(): Promise<void> {
     const file = await this._openFileDialog();
     if (!file) {
       this._setLoadStatus('No file selected.');
@@ -335,7 +338,7 @@ export class PluginControl implements IControl, DeepLinkConsumer {
   }
 
   /**
-   * Prompt the user to choose a single `.nc` file.
+   * Prompt the user to choose a single hyperspectral scene file.
    *
    * Resolves with the chosen file, or `null` if none was selected. Note that
    * browsers do not fire an event when the dialog is cancelled, so the promise
@@ -345,7 +348,7 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.nc,.nc4';
+      input.accept = '.nc,.nc4,.h5,.he5,.tif,.tiff';
       input.style.display = 'none';
       input.addEventListener(
         'change',
@@ -398,7 +401,10 @@ export class PluginControl implements IControl, DeepLinkConsumer {
       this._fitted = false;
       this._clearSpectra();
 
-      const scene = await openEmitScene(bytes, name);
+      const scene = await openScene(bytes, name, {
+        sensor: this._selectedSensor,
+        fetchArrayBuffer: this._options.fetchArrayBuffer,
+      });
       this._scene = scene;
 
       // Clamp the default/persisted RGB wavelengths to the scene's range.
@@ -420,7 +426,8 @@ export class PluginControl implements IControl, DeepLinkConsumer {
       this._syncUiFromState();
       this._refs?.controls.classList.add('visible');
       this._setSceneInfo(
-        `${name} - ${scene.metadata.bandCount} bands, ${wl[0].toFixed(0)}-${wl[wl.length - 1].toFixed(0)} nm`,
+        `${scene.metadata.sensor} · ${name} - ${scene.metadata.bandCount} bands, ` +
+          `${wl[0].toFixed(0)}-${wl[wl.length - 1].toFixed(0)} nm`,
       );
 
       this._setLoading('Rendering RGB composite…');
@@ -776,12 +783,42 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     const content = document.createElement('div');
     content.className = 'plugin-control-content';
 
+    // Sensor selector: auto-detect by default, with a manual override for
+    // ambiguous files (e.g. a GeoTIFF whose sensor can't be inferred from name).
+    const sensorRow = document.createElement('div');
+    sensorRow.className = 'plugin-control-group hypercoast-sensor';
+    const sensorLabel = document.createElement('label');
+    sensorLabel.className = 'plugin-control-label';
+    sensorLabel.textContent = 'Sensor';
+    // Unique per instance so multiple controls on one page don't collide ids.
+    const sensorSelectId = generateId('hypercoast-sensor-select');
+    sensorLabel.htmlFor = sensorSelectId;
+    const sensorSelect = document.createElement('select');
+    sensorSelect.className = 'plugin-control-select';
+    sensorSelect.id = sensorSelectId;
+    const autoOpt = document.createElement('option');
+    autoOpt.value = 'auto';
+    autoOpt.textContent = 'Auto-detect';
+    sensorSelect.appendChild(autoOpt);
+    for (const s of SENSORS) {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.label;
+      sensorSelect.appendChild(opt);
+    }
+    sensorSelect.value = this._selectedSensor;
+    sensorSelect.addEventListener('change', () => {
+      this._selectedSensor = sensorSelect.value;
+    });
+    sensorRow.appendChild(sensorLabel);
+    sensorRow.appendChild(sensorSelect);
+
     // Load button + status
     const loadBtn = document.createElement('button');
     loadBtn.type = 'button';
     loadBtn.className = 'plugin-control-button hypercoast-load';
-    loadBtn.textContent = 'Load EMIT scene…';
-    loadBtn.addEventListener('click', () => void this.loadEmitFromFiles());
+    loadBtn.textContent = 'Load hyperspectral scene…';
+    loadBtn.addEventListener('click', () => void this.loadSceneFromFiles());
 
     const loadStatus = document.createElement('div');
     loadStatus.className = 'plugin-control-status';
@@ -871,6 +908,7 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     spectraActions.appendChild(clearBtn);
     controls.appendChild(spectraActions);
 
+    content.appendChild(sensorRow);
     content.appendChild(loadBtn);
     content.appendChild(loadStatus);
     content.appendChild(sceneInfo);
