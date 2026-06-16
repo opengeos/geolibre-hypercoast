@@ -38,8 +38,8 @@ export interface SensorInfo {
 
 /** All sensors the plugin can read (besides the "auto" default). */
 export const SENSORS: readonly SensorInfo[] = [
-  { id: "EMIT", label: "NASA EMIT (L2A)", container: "hdf5" },
-  { id: "PACE", label: "NASA PACE OCI", container: "hdf5" },
+  { id: "EMIT", label: "NASA EMIT", container: "hdf5" },
+  { id: "PACE", label: "NASA PACE", container: "hdf5" },
   { id: "NEON", label: "NEON AOP", container: "hdf5" },
   { id: "PRISMA", label: "PRISMA L2D", container: "hdf5" },
   { id: "Tanager", label: "Planet Tanager", container: "hdf5" },

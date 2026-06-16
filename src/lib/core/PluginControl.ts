@@ -136,7 +136,6 @@ export class PluginControl implements IControl, DeepLinkConsumer {
   // Panel positioning handlers
   private _resizeHandler: (() => void) | null = null;
   private _mapResizeHandler: (() => void) | null = null;
-  private _clickOutsideHandler: ((e: MouseEvent) => void) | null = null;
 
   /**
    * Creates a new PluginControl instance.
@@ -168,7 +167,9 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     this._mapContainer.appendChild(this._panel);
 
     this._overlay = new RasterOverlay(OVERLAY_ID, {
-      getMap: this._options.getMap,
+      // Fall back to the control's own map so the overlay renders in standalone
+      // use (the default getMap returns null; only the GeoLibre host supplies one).
+      getMap: () => this._options.getMap?.() ?? this._map ?? null,
       registerNativeLayer: this._options.registerNativeLayer,
       unregisterNativeLayer: this._options.unregisterNativeLayer,
     });
@@ -199,11 +200,6 @@ export class PluginControl implements IControl, DeepLinkConsumer {
       this._map.off('resize', this._mapResizeHandler);
       this._mapResizeHandler = null;
     }
-    if (this._clickOutsideHandler) {
-      document.removeEventListener('click', this._clickOutsideHandler);
-      this._clickOutsideHandler = null;
-    }
-
     this._setInspectorActive(false);
     this._clearMarkers();
     this._chart?.dispose();
@@ -917,6 +913,14 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     panel.appendChild(header);
     panel.appendChild(content);
 
+    // Width-resize grips on both edges (works whichever corner the panel docks).
+    for (const side of ['left', 'right'] as const) {
+      const handle = document.createElement('div');
+      handle.className = `plugin-control-resize-handle ${side}`;
+      handle.addEventListener('pointerdown', (e) => this._startResize(e, side, panel));
+      panel.appendChild(handle);
+    }
+
     this._refs = {
       loadStatus,
       controls,
@@ -930,6 +934,39 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     this._chart = new SpectrumChart(chart, 160);
 
     return panel;
+  }
+
+  /**
+   * Drag-resize the panel width from either edge.
+   *
+   * Both grips adjust the width (not a fixed edge), so the panel resizes whether
+   * it is anchored to the left or the right: the right grip grows the panel as it
+   * is dragged outward, the left grip grows it as it is dragged the other way.
+   * The new width is clamped to the panel's CSS min/max and persisted to state.
+   *
+   * @param e - The pointerdown event on a resize handle.
+   * @param side - Which edge the grip is on.
+   * @param panel - The panel element being resized.
+   */
+  private _startResize(e: PointerEvent, side: 'left' | 'right', panel: HTMLElement): void {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panel.getBoundingClientRect().width;
+    const maxWidth = window.innerWidth * 0.9; // mirrors CSS max-width: 90vw
+    const minWidth = 260; // mirrors CSS min-width
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = ev.clientX - startX;
+      const next = side === 'right' ? startWidth + delta : startWidth - delta;
+      panel.style.width = `${Math.max(minWidth, Math.min(maxWidth, next))}px`;
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      this.setState({ panelWidth: Math.round(panel.getBoundingClientRect().width) });
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
   }
 
   /** Build one labeled wavelength slider + number input row. */
@@ -1007,22 +1044,8 @@ export class PluginControl implements IControl, DeepLinkConsumer {
   // -------------------------------------------------------------------------
 
   private _setupEventListeners(): void {
-    this._clickOutsideHandler = (e: MouseEvent) => {
-      // Keep the panel open while the inspector is active so map clicks (which
-      // land outside the panel) don't collapse it.
-      if (this._state.data.inspectorActive) return;
-      const target = e.target as Node;
-      if (
-        this._container &&
-        this._panel &&
-        !this._container.contains(target) &&
-        !this._panel.contains(target)
-      ) {
-        this.collapse();
-      }
-    };
-    document.addEventListener('click', this._clickOutsideHandler);
-
+    // The panel only collapses via the toggle button or the header's × button —
+    // clicking elsewhere (the map, other controls) leaves it open by design.
     this._resizeHandler = () => {
       if (!this._state.collapsed) this._updatePanelPosition();
     };
