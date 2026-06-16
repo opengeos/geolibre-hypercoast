@@ -157,17 +157,21 @@
   background: var(--pc-scrollbar-thumb-hover);
 }
 
-/* Width-resize grips on both vertical edges, so the panel is resizable whether
-   it is anchored to the left or the right of the map. */
+/* Resize grips on all four edges, so width and height are both adjustable
+   whichever corner the panel is anchored in. */
 .plugin-control-resize-handle {
   position: absolute;
+  z-index: 2;
+  touch-action: none;
+  user-select: none;
+}
+
+.plugin-control-resize-handle.left,
+.plugin-control-resize-handle.right {
   top: 0;
   width: 6px;
   height: 100%;
   cursor: ew-resize;
-  z-index: 2;
-  touch-action: none;
-  user-select: none;
 }
 
 .plugin-control-resize-handle.left {
@@ -176,6 +180,24 @@
 
 .plugin-control-resize-handle.right {
   right: 0;
+}
+
+/* Inset horizontally so the top/bottom grips don't overlap the left/right ones
+   at the corners. */
+.plugin-control-resize-handle.top,
+.plugin-control-resize-handle.bottom {
+  left: 6px;
+  right: 6px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.plugin-control-resize-handle.top {
+  top: 0;
+}
+
+.plugin-control-resize-handle.bottom {
+  bottom: 0;
 }
 
 .plugin-control-panel.expanded {
@@ -229,10 +251,8 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  /* Inset the controls from the right edge so the scrollbar never overlaps
-     them. Uses explicit padding rather than `scrollbar-gutter`, which is not
-     honored by the older WebKitGTK build in the Tauri desktop webview. */
-  padding-right: 10px;
+  /* No reserved right gutter: the scrollbar takes space only when the content
+     actually overflows, so there's no wide empty margin when it fits. */
 }
 
 .plugin-control-placeholder {
@@ -536,6 +556,20 @@
   margin: 6px 0;
   font-size: 11px;
   color: var(--pc-muted);
+}
+
+/* Spectra output: hidden until the inspector is on, so an idle panel doesn't
+   reserve the chart's height as empty white space. When active it becomes the
+   flex region that grows with the panel. */
+.hypercoast-spectra {
+  display: none;
+}
+
+.hypercoast-controls.inspector-active .hypercoast-spectra {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* The chart grows to fill the height the panel gives it (min 160px), and its

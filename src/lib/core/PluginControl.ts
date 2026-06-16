@@ -505,6 +505,9 @@ export class PluginControl implements IControl, DeepLinkConsumer {
       this._refs.inspectorBtn.textContent = active
         ? 'Spectral inspector: ON'
         : 'Spectral inspector: OFF';
+      // Show the spectra output (chart/actions) only while the inspector is on,
+      // so the panel doesn't reserve empty chart space when it's off.
+      this._refs.controls.classList.toggle('inspector-active', active);
     }
 
     if (!map) return;
@@ -880,13 +883,19 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     hint.textContent = 'Turn on, then click the image to plot a pixel spectrum.';
     controls.appendChild(hint);
 
+    // The spectra output (chart + collected-series info + actions) only takes
+    // space while the inspector is on; hidden otherwise so the panel hugs its
+    // content with no empty chart area below.
+    const spectraSection = document.createElement('div');
+    spectraSection.className = 'hypercoast-spectra';
+
     const chart = document.createElement('div');
     chart.className = 'hypercoast-chart';
-    controls.appendChild(chart);
+    spectraSection.appendChild(chart);
 
     const spectraInfo = document.createElement('div');
     spectraInfo.className = 'plugin-control-status';
-    controls.appendChild(spectraInfo);
+    spectraSection.appendChild(spectraInfo);
 
     const spectraActions = document.createElement('div');
     spectraActions.className = 'plugin-control-flex';
@@ -902,7 +911,8 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     clearBtn.addEventListener('click', () => this._clearSpectra());
     spectraActions.appendChild(exportBtn);
     spectraActions.appendChild(clearBtn);
-    controls.appendChild(spectraActions);
+    spectraSection.appendChild(spectraActions);
+    controls.appendChild(spectraSection);
 
     content.appendChild(sensorRow);
     content.appendChild(loadBtn);
@@ -913,8 +923,9 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     panel.appendChild(header);
     panel.appendChild(content);
 
-    // Width-resize grips on both edges (works whichever corner the panel docks).
-    for (const side of ['left', 'right'] as const) {
+    // Resize grips on all four edges, so width and height are both adjustable
+    // whichever corner the panel docks in.
+    for (const side of ['left', 'right', 'top', 'bottom'] as const) {
       const handle = document.createElement('div');
       handle.className = `plugin-control-resize-handle ${side}`;
       handle.addEventListener('pointerdown', (e) => this._startResize(e, side, panel));
@@ -937,33 +948,44 @@ export class PluginControl implements IControl, DeepLinkConsumer {
   }
 
   /**
-   * Drag-resize the panel width from either edge.
+   * Drag-resize the panel from any edge.
    *
-   * Both grips adjust the width (not a fixed edge), so the panel resizes whether
-   * it is anchored to the left or the right: the right grip grows the panel as it
-   * is dragged outward, the left grip grows it as it is dragged the other way.
-   * The new width is clamped to the panel's CSS min/max and persisted to state.
+   * Each grip adjusts a dimension (not a fixed edge), so the panel resizes from
+   * whichever corner it docks in: the right/bottom grips grow it as they are
+   * dragged outward, the left/top grips grow it as they are dragged the other
+   * way. The new size is clamped to the panel's CSS min/max; width is persisted
+   * to state (height is transient).
    *
    * @param e - The pointerdown event on a resize handle.
    * @param side - Which edge the grip is on.
    * @param panel - The panel element being resized.
    */
-  private _startResize(e: PointerEvent, side: 'left' | 'right', panel: HTMLElement): void {
+  private _startResize(
+    e: PointerEvent,
+    side: 'left' | 'right' | 'top' | 'bottom',
+    panel: HTMLElement,
+  ): void {
     e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = panel.getBoundingClientRect().width;
-    const maxWidth = window.innerWidth * 0.9; // mirrors CSS max-width: 90vw
-    const minWidth = 260; // mirrors CSS min-width
+    const horizontal = side === 'left' || side === 'right';
+    const start = horizontal ? e.clientX : e.clientY;
+    const rect = panel.getBoundingClientRect();
+    const startSize = horizontal ? rect.width : rect.height;
+    const min = horizontal ? 260 : 160; // mirrors CSS min-width / min-height
+    const max = horizontal ? window.innerWidth * 0.9 : window.innerHeight * 0.85; // 90vw / 85vh
+    const grow = side === 'right' || side === 'bottom' ? 1 : -1;
 
     const onMove = (ev: PointerEvent) => {
-      const delta = ev.clientX - startX;
-      const next = side === 'right' ? startWidth + delta : startWidth - delta;
-      panel.style.width = `${Math.max(minWidth, Math.min(maxWidth, next))}px`;
+      const pos = horizontal ? ev.clientX : ev.clientY;
+      const next = Math.max(min, Math.min(max, startSize + grow * (pos - start)));
+      if (horizontal) panel.style.width = `${next}px`;
+      else panel.style.height = `${next}px`;
     };
     const onUp = () => {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
-      this.setState({ panelWidth: Math.round(panel.getBoundingClientRect().width) });
+      if (horizontal) {
+        this.setState({ panelWidth: Math.round(panel.getBoundingClientRect().width) });
+      }
     };
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUp);
