@@ -13,6 +13,7 @@ import type {
   PluginControlEventHandler,
 } from './types';
 import type { DeepLinkConsumer } from '../utils/deep-link';
+import { generateId } from '../utils/helpers';
 import type { SceneReader } from '../io/SceneReader';
 import { nearestBandIndex } from '../io/SceneReader';
 import { openScene, SENSORS } from '../io/registry';
@@ -789,10 +790,12 @@ export class PluginControl implements IControl, DeepLinkConsumer {
     const sensorLabel = document.createElement('label');
     sensorLabel.className = 'plugin-control-label';
     sensorLabel.textContent = 'Sensor';
-    sensorLabel.htmlFor = 'hypercoast-sensor-select';
+    // Unique per instance so multiple controls on one page don't collide ids.
+    const sensorSelectId = generateId('hypercoast-sensor-select');
+    sensorLabel.htmlFor = sensorSelectId;
     const sensorSelect = document.createElement('select');
     sensorSelect.className = 'plugin-control-select';
-    sensorSelect.id = 'hypercoast-sensor-select';
+    sensorSelect.id = sensorSelectId;
     const autoOpt = document.createElement('option');
     autoOpt.value = 'auto';
     autoOpt.textContent = 'Auto-detect';
