@@ -25,15 +25,23 @@ export interface ChartSeries {
 }
 
 /**
- * Pick theme-appropriate canvas colors for axes and grid, following the host
- * app's theme (GeoLibre toggles a `.dark` class on the document element) rather
- * than the OS preference.
+ * Pick theme-appropriate canvas colors for axes and grid by reading the host
+ * theme's CSS custom properties off the chart container. These are defined in
+ * `plugin-control.css` and switch with GeoLibre's `.dark` ancestor class, so the
+ * canvas stays in sync with the rest of the themed control without duplicating
+ * the palette in JS. Hardcoded fallbacks cover the case where the variables are
+ * missing (e.g. the stylesheet did not load).
+ *
+ * @param container - The chart container the CSS variables inherit onto.
  */
-function themeColors(): { axis: string; grid: string } {
-  const dark = document.documentElement.classList.contains("dark");
-  return dark
-    ? { axis: "#cbd5e1", grid: "rgba(255, 255, 255, 0.12)" }
-    : { axis: "#555555", grid: "rgba(0, 0, 0, 0.08)" };
+function themeColors(container: HTMLElement): { axis: string; grid: string } {
+  const style = getComputedStyle(container);
+  const read = (name: string, fallback: string): string =>
+    style.getPropertyValue(name).trim() || fallback;
+  return {
+    axis: read("--pc-chart-axis", "#555555"),
+    grid: read("--pc-chart-grid", "rgba(0, 0, 0, 0.08)"),
+  };
 }
 
 export class SpectrumChart {
@@ -41,6 +49,14 @@ export class SpectrumChart {
   private readonly _minHeight: number;
   private _plot: uPlot | null = null;
   private _observer: ResizeObserver | null = null;
+  private _themeObserver: MutationObserver | null = null;
+  // Last data passed to setData, retained so a host theme switch can re-render
+  // the canvas (whose colors are baked in at draw time) with the new palette.
+  private _wavelengths: readonly number[] | null = null;
+  private _series: readonly ChartSeries[] | null = null;
+  // Whether a `.dark` ancestor is currently present; used to ignore unrelated
+  // class mutations and only re-render when the light/dark state actually flips.
+  private _isDark: boolean;
 
   /**
    * @param container - Element the chart canvas mounts into and sizes to.
@@ -49,9 +65,35 @@ export class SpectrumChart {
   constructor(container: HTMLElement, minHeight = 160) {
     this._container = container;
     this._minHeight = minHeight;
+    this._isDark = this._detectDark();
     // Resize the plot to the container as the panel is resized.
     this._observer = new ResizeObserver(() => this._applySize());
     this._observer.observe(container);
+    // Re-render when the host toggles its theme. GeoLibre flips a `.dark` class
+    // on an ancestor (typically <html> or <body>), so watch both for class
+    // changes and rebuild the canvas when the light/dark state changes.
+    this._themeObserver = new MutationObserver(() => this._onThemeMutation());
+    const opts: MutationObserverInit = {
+      attributes: true,
+      attributeFilter: ["class"],
+    };
+    this._themeObserver.observe(document.documentElement, opts);
+    if (document.body) this._themeObserver.observe(document.body, opts);
+  }
+
+  /** True when a `.dark` ancestor governs the container (matches the CSS). */
+  private _detectDark(): boolean {
+    return this._container.closest(".dark") !== null;
+  }
+
+  /** Rebuild the canvas with fresh colors when the host theme flips. */
+  private _onThemeMutation(): void {
+    const dark = this._detectDark();
+    if (dark === this._isDark) return;
+    this._isDark = dark;
+    if (this._wavelengths && this._series) {
+      this._render(this._wavelengths, this._series);
+    }
   }
 
   /** Current plot size, derived from the container with sensible minimums. */
@@ -74,9 +116,21 @@ export class SpectrumChart {
    * @param series - One entry per collected spectrum.
    */
   setData(wavelengths: readonly number[], series: readonly ChartSeries[]): void {
-    this.destroy();
+    this._wavelengths = wavelengths;
+    this._series = series;
+    this._render(wavelengths, series);
+  }
 
-    const colors = themeColors();
+  /** Build the uPlot instance from data and the current host theme colors. */
+  private _render(wavelengths: readonly number[], series: readonly ChartSeries[]): void {
+    this._teardown();
+
+    // Refresh the dark-state baseline against the live (attached) container so
+    // the theme observer compares against what was actually rendered. At
+    // construction the container may still be detached, so this is the reliable
+    // point to capture it.
+    this._isDark = this._detectDark();
+    const colors = themeColors(this._container);
     const { width, height } = this._size();
     const xs = Float64Array.from(wavelengths);
     const data: uPlot.AlignedData = [
@@ -122,8 +176,8 @@ export class SpectrumChart {
     this._plot = new uPlot(opts, data, this._container);
   }
 
-  /** Destroy the underlying uPlot instance and clear the container. */
-  destroy(): void {
+  /** Tear down the live uPlot instance and clear the container DOM. */
+  private _teardown(): void {
     if (this._plot) {
       this._plot.destroy();
       this._plot = null;
@@ -131,10 +185,23 @@ export class SpectrumChart {
     this._container.innerHTML = "";
   }
 
-  /** Fully tear down the chart, including the resize observer. */
+  /**
+   * Destroy the underlying uPlot instance and clear the container. Also forgets
+   * the retained data so a subsequent host theme switch does not resurrect a
+   * chart the caller intentionally cleared.
+   */
+  destroy(): void {
+    this._teardown();
+    this._wavelengths = null;
+    this._series = null;
+  }
+
+  /** Fully tear down the chart, including the resize and theme observers. */
   dispose(): void {
     this.destroy();
     this._observer?.disconnect();
     this._observer = null;
+    this._themeObserver?.disconnect();
+    this._themeObserver = null;
   }
 }
