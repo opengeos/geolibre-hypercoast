@@ -5,8 +5,9 @@
  * Customize these styles to match your plugin's design.
  *
  * Colors are defined as CSS custom properties so the control adapts to the
- * system theme (light/dark) via `prefers-color-scheme`. Override these
- * variables to apply a custom theme.
+ * HOST APP's theme (light/dark). GeoLibre toggles a `.dark` class on an
+ * ancestor element (shadcn/tailwind convention), and the dark token block below
+ * keys off it. Override these variables to apply a custom theme.
  */
 
 /*
@@ -34,6 +35,10 @@
   --pc-accent: #4a90d9;
   --pc-accent-hover: #3a7bc8;
   --pc-accent-ring: rgba(74, 144, 217, 0.15);
+  /* Canvas spectrum chart (uPlot). Kept here so axis/grid colors live with the
+     rest of the palette; SpectrumChart reads these via getComputedStyle. */
+  --pc-chart-axis: #555555;
+  --pc-chart-grid: rgba(0, 0, 0, 0.08);
 }
 
 /*
@@ -62,6 +67,8 @@
     --pc-accent: #4a90d9;
     --pc-accent-hover: #5a9fe5;
     --pc-accent-ring: rgba(74, 144, 217, 0.25);
+    --pc-chart-axis: #cbd5e1;
+    --pc-chart-grid: rgba(255, 255, 255, 0.12);
 }
 
 /*
